@@ -226,11 +226,10 @@ public:
         : ClangTidyCheck(Name, Context) {}
 
     void registerMatchers(MatchFinder *Finder) override {
-        // Match variable declarations with annotations
+        // Match all variable declarations with initializers
         Finder->addMatcher(
-            varDecl(hasAttr(attr::Annotate),
-                   hasInitializer(expr().bind("init")))
-            .bind("annotatedVar"),
+            varDecl(hasInitializer(expr().bind("init")))
+            .bind("var"),
             this);
 
         // Match function declarations with annotations
@@ -257,7 +256,7 @@ public:
                     return it->second;
                 }
             }
-            return Unit(); // Default to unitless for unknown functions
+            return Unit();
         }
 
         if (const auto* declRef = dyn_cast<DeclRefExpr>(E)) {
@@ -284,7 +283,7 @@ public:
             }
         }
         
-        return Unit(); // Default to unitless
+        return Unit();
     }
 
     void check(const MatchFinder::MatchResult &Result) override {
@@ -301,28 +300,36 @@ public:
             return;
         }
 
-        // Handle annotated variables
-        const auto *VD = Result.Nodes.getNodeAs<VarDecl>("annotatedVar");
+        // Handle all variable declarations
+        const auto *VD = Result.Nodes.getNodeAs<VarDecl>("var");
         const auto *Init = Result.Nodes.getNodeAs<Expr>("init");
         
         if (!VD || !Init)
             return;
 
-        const auto *annotateAttr = VD->getAttr<AnnotateAttr>();
-        if (!annotateAttr)
-            return;
-
         try {
-            Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
-            varUnits[VD] = declaredUnit;
-            
+            // Get the unit of the initializer
             Unit initUnit = inferExpressionUnit(Init);
-            
-            if (!(declaredUnit == initUnit)) {
+
+            // If initializer has units but variable doesn't have annotation
+            if (initUnit.toString() != "unitless" && !VD->hasAttr<AnnotateAttr>()) {
                 diag(VD->getLocation(),
-                     "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
-                    << declaredUnit.toString()
+                     "Unit safety violation: assigning value with unit %0 to variable without unit annotation")
                     << initUnit.toString();
+                return;
+            }
+
+            // If variable has annotation, verify units match
+            if (const auto *annotateAttr = VD->getAttr<AnnotateAttr>()) {
+                Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+                varUnits[VD] = declaredUnit;
+                
+                if (!(declaredUnit == initUnit)) {
+                    diag(VD->getLocation(),
+                         "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
+                        << declaredUnit.toString()
+                        << initUnit.toString();
+                }
             }
         } catch (const std::runtime_error &e) {
             diag(VD->getLocation(), "Invalid unit annotation: %0") << e.what();
