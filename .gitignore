@@ -34,6 +34,8 @@
 # IDE
 .vscode/*
 
+# CMake
+Makefile
 CMakeCache.txt
 c/src/CMakeFiles/*
 c/src/CMakeFiles
