@@ -1,4 +1,0 @@
-/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/CMakeFiles/DimensionalAnalysisCheck.dir
-/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/CMakeFiles/test.dir
-/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/CMakeFiles/edit_cache.dir
-/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/CMakeFiles/rebuild_cache.dir

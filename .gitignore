@@ -35,3 +35,6 @@
 .vscode/*
 
 CMakeCache.txt
+c/src/CMakeFiles/*
+c/src/CMakeFiles
+cmake_install.cmake
