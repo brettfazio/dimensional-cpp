@@ -1,0 +1,2 @@
+Checks:          '-*,example-check'
+WarningsAsErrors: 'example-check'
