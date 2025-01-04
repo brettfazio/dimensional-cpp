@@ -1,2 +1,2 @@
-Checks:          '-*,example-check'
-WarningsAsErrors: 'example-check'
+Checks:          '-*,custom-dim-analys-check'
+WarningsAsErrors: 'custom-dim-analys-check'

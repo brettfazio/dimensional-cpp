@@ -142,29 +142,29 @@ test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test.dir/build.make CMakeFiles/test.dir/build
 .PHONY : test/fast
 
-todo.o: todo.cpp.o
-.PHONY : todo.o
+dimensional.o: dimensional.cpp.o
+.PHONY : dimensional.o
 
 # target to build an object file
-todo.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/DimensionalAnalysisCheck.dir/build.make CMakeFiles/DimensionalAnalysisCheck.dir/todo.cpp.o
-.PHONY : todo.cpp.o
+dimensional.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/DimensionalAnalysisCheck.dir/build.make CMakeFiles/DimensionalAnalysisCheck.dir/dimensional.cpp.o
+.PHONY : dimensional.cpp.o
 
-todo.i: todo.cpp.i
-.PHONY : todo.i
+dimensional.i: dimensional.cpp.i
+.PHONY : dimensional.i
 
 # target to preprocess a source file
-todo.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/DimensionalAnalysisCheck.dir/build.make CMakeFiles/DimensionalAnalysisCheck.dir/todo.cpp.i
-.PHONY : todo.cpp.i
+dimensional.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/DimensionalAnalysisCheck.dir/build.make CMakeFiles/DimensionalAnalysisCheck.dir/dimensional.cpp.i
+.PHONY : dimensional.cpp.i
 
-todo.s: todo.cpp.s
-.PHONY : todo.s
+dimensional.s: dimensional.cpp.s
+.PHONY : dimensional.s
 
 # target to generate assembly for a file
-todo.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/DimensionalAnalysisCheck.dir/build.make CMakeFiles/DimensionalAnalysisCheck.dir/todo.cpp.s
-.PHONY : todo.cpp.s
+dimensional.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/DimensionalAnalysisCheck.dir/build.make CMakeFiles/DimensionalAnalysisCheck.dir/dimensional.cpp.s
+.PHONY : dimensional.cpp.s
 
 # Help Target
 help:
@@ -176,9 +176,9 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... test"
 	@echo "... DimensionalAnalysisCheck"
-	@echo "... todo.o"
-	@echo "... todo.i"
-	@echo "... todo.s"
+	@echo "... dimensional.o"
+	@echo "... dimensional.i"
+	@echo "... dimensional.s"
 .PHONY : help
 
 

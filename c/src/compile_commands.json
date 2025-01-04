@@ -1,8 +1,8 @@
 [
 {
   "directory": "/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src",
-  "command": "/opt/homebrew/opt/llvm/bin/clang++ -DDimensionalAnalysisCheck_EXPORTS -I/opt/homebrew/Cellar/llvm/19.1.6/include -fPIC -stdlib=libc++ -std=gnu++17 -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -fPIC -o CMakeFiles/DimensionalAnalysisCheck.dir/todo.cpp.o -c /Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/todo.cpp",
-  "file": "/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/todo.cpp",
-  "output": "CMakeFiles/DimensionalAnalysisCheck.dir/todo.cpp.o"
+  "command": "/opt/homebrew/opt/llvm/bin/clang++ -DDimensionalAnalysisCheck_EXPORTS -I/opt/homebrew/Cellar/llvm/19.1.6/include -fPIC -stdlib=libc++ -std=gnu++17 -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -fPIC -o CMakeFiles/DimensionalAnalysisCheck.dir/dimensional.cpp.o -c /Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/dimensional.cpp",
+  "file": "/Users/brettfazio/Documents/GitHub/dimensional-cpp/c/src/dimensional.cpp",
+  "output": "CMakeFiles/DimensionalAnalysisCheck.dir/dimensional.cpp.o"
 }
 ]

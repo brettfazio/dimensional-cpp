@@ -12,7 +12,7 @@ set(LLVM_INCLUDE_PATH ${LLVM_PATH}/include)
 
 # Define plugin and source files
 set(PLUGIN_NAME DimensionalAnalysisCheck)
-set(PLUGIN_SRC todo.cpp)
+set(PLUGIN_SRC dimensional.cpp)
 set(PLUGIN_SO lib${PLUGIN_NAME}.so)
 
 # Define Clang Tidy and Clang++ binary paths

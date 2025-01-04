@@ -236,7 +236,7 @@ public:
                 // Convert llvm::StringRef to std::string
                 Unit varUnit = parseAnnotation(annotateAttr->getAnnotation().str());
                 // You can add more checks related to dimensional analysis here
-                diag(VD->getLocation(), "Variable %0 has a valid unit annotation")
+                diag(VD->getLocation(), "Variable %0 has a valid unit annotation", clang::DiagnosticIDs::Note)
                     << VD->getName();
             } catch (const std::runtime_error &e) {
                 diag(VD->getLocation(), "Invalid unit annotation: %0") << e.what();
