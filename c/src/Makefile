@@ -1,32 +1,27 @@
 PLUGIN_NAME = DimensionalAnalysisCheck
+LLVM_PATH = /opt/homebrew/Cellar/llvm/19.1.6
+LLVM_LIB_PATH = $(LLVM_PATH)/lib
+LLVM_INCLUDE_PATH = $(LLVM_PATH)/include
 
-LLVM_CONFIG = llvm-config
-CLANG_TIDY = clang-tidy
-
-LLVM_LIB_PATH = /opt/homebrew/Cellar/llvm/19.1.6/lib
-
-CXX = $(shell $(LLVM_CONFIG) --bindir)/clang++
-LLVM_CXXFLAGS = $(shell $(LLVM_CONFIG) --cxxflags)
-LLVM_LDFLAGS = $(shell $(LLVM_CONFIG) --ldflags)
-LLVM_LIBS = $(shell $(LLVM_CONFIG) --libs)
+CXX = $(LLVM_PATH)/bin/clang++
+CXXFLAGS = -fPIC -shared -std=c++17 -stdlib=libc++
 
 PLUGIN_SRC = dimensional.cpp
 PLUGIN_SO = lib$(PLUGIN_NAME).so
 
-# Test files
-TEST_SRC = test.cpp
-TEST_OUT = test.out
-
 all: $(PLUGIN_SO)
 
-# Build the plugin as a shared library
 $(PLUGIN_SO): $(PLUGIN_SRC)
-	$(CXX) -fPIC -shared $(PLUGIN_SRC) -o $(PLUGIN_SO) $(LLVM_CXXFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -L$(LLVM_LIB_PATH) -lclangTidy -lclangASTMatchers -lclangAST -lclangFrontend -lclangBasic -lclangTooling -lclangSerialization -lclangLex
-
-# Run Clang-Tidy with the plugin
-test: $(PLUGIN_SO) $(TEST_SRC)
-	$(CLANG_TIDY) $(TEST_SRC) --load=$(PLUGIN_SO) --checks=-*,custom-dim-analys-check > $(TEST_OUT)
-	cat $(TEST_OUT)
+	$(CXX) $(CXXFLAGS) $(PLUGIN_SRC) -o $(PLUGIN_SO) \
+	-I$(LLVM_INCLUDE_PATH) \
+	-L$(LLVM_LIB_PATH) \
+	-Wl,-rpath,$(LLVM_LIB_PATH) \
+	-lclangTidy \
+	-lLLVM \
+	-lclang-cpp \
+	-lclang
 
 clean:
-	rm -f $(PLUGIN_SO) $(TEST_OUT)
+	rm -f $(PLUGIN_SO)
+
+.PHONY: all clean
