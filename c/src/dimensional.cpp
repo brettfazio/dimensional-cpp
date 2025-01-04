@@ -218,34 +218,119 @@ Unit parseAnnotation(const std::string &annotation) {
 }
 
 class DimensionalAnalysisCheck : public clang::tidy::ClangTidyCheck {
+    std::map<const VarDecl*, Unit> varUnits;
+    std::map<const FunctionDecl*, Unit> functionUnits;
+
 public:
     DimensionalAnalysisCheck(StringRef Name, clang::tidy::ClangTidyContext *Context)
         : ClangTidyCheck(Name, Context) {}
 
     void registerMatchers(MatchFinder *Finder) override {
-        Finder->addMatcher(varDecl(hasAttr(attr::Annotate)).bind("annotatedVar"), this);
+        // Match variable declarations with annotations
+        Finder->addMatcher(
+            varDecl(hasAttr(attr::Annotate),
+                   hasInitializer(expr().bind("init")))
+            .bind("annotatedVar"),
+            this);
+
+        // Match function declarations with annotations
+        Finder->addMatcher(
+            functionDecl(hasAttr(attr::Annotate))
+            .bind("annotatedFunc"),
+            this);
+    }
+
+    Unit inferExpressionUnit(const Expr* E) {
+        E = E->IgnoreParenImpCasts();
+
+        // Handle function calls
+        if (const auto* call = dyn_cast<CallExpr>(E)) {
+            if (const auto* callee = call->getDirectCallee()) {
+                // Check if the function has a unit annotation
+                if (const auto* annotateAttr = callee->getAttr<AnnotateAttr>()) {
+                    return parseAnnotation(annotateAttr->getAnnotation().str());
+                }
+                
+                // Check if we have a stored unit for this function
+                auto it = functionUnits.find(callee);
+                if (it != functionUnits.end()) {
+                    return it->second;
+                }
+            }
+            return Unit(); // Default to unitless for unknown functions
+        }
+
+        if (const auto* declRef = dyn_cast<DeclRefExpr>(E)) {
+            if (const auto* varDecl = dyn_cast<VarDecl>(declRef->getDecl())) {
+                auto it = varUnits.find(varDecl);
+                if (it != varUnits.end()) {
+                    return it->second;
+                }
+            }
+        } else if (const auto* binOp = dyn_cast<BinaryOperator>(E)) {
+            Unit leftUnit = inferExpressionUnit(binOp->getLHS());
+            Unit rightUnit = inferExpressionUnit(binOp->getRHS());
+            
+            switch (binOp->getOpcode()) {
+                case BO_Mul:
+                    return leftUnit * rightUnit;
+                case BO_Div:
+                    return leftUnit / rightUnit;
+                default:
+                    if (!(leftUnit == rightUnit)) {
+                        diag(binOp->getOperatorLoc(), "Mismatched units in operation");
+                    }
+                    return leftUnit;
+            }
+        }
+        
+        return Unit(); // Default to unitless
     }
 
     void check(const MatchFinder::MatchResult &Result) override {
+        // Handle annotated functions
+        if (const auto *FD = Result.Nodes.getNodeAs<FunctionDecl>("annotatedFunc")) {
+            if (const auto *annotateAttr = FD->getAttr<AnnotateAttr>()) {
+                try {
+                    Unit functionUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+                    functionUnits[FD] = functionUnit;
+                } catch (const std::runtime_error &e) {
+                    diag(FD->getLocation(), "Invalid unit annotation on function: %0") << e.what();
+                }
+            }
+            return;
+        }
+
+        // Handle annotated variables
         const auto *VD = Result.Nodes.getNodeAs<VarDecl>("annotatedVar");
-        if (!VD)
+        const auto *Init = Result.Nodes.getNodeAs<Expr>("init");
+        
+        if (!VD || !Init)
             return;
 
-        if (const auto *annotateAttr = VD->getAttr<AnnotateAttr>()) {
-            try {
-                // Convert llvm::StringRef to std::string
-                Unit varUnit = parseAnnotation(annotateAttr->getAnnotation().str());
-                // You can add more checks related to dimensional analysis here
-                diag(VD->getLocation(), "Variable %0 has a valid unit annotation", clang::DiagnosticIDs::Note)
-                    << VD->getName();
-            } catch (const std::runtime_error &e) {
-                diag(VD->getLocation(), "Invalid unit annotation: %0") << e.what();
+        const auto *annotateAttr = VD->getAttr<AnnotateAttr>();
+        if (!annotateAttr)
+            return;
+
+        try {
+            Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+            varUnits[VD] = declaredUnit;
+            
+            Unit initUnit = inferExpressionUnit(Init);
+            
+            if (!(declaredUnit == initUnit)) {
+                diag(VD->getLocation(),
+                     "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
+                    << declaredUnit.toString()
+                    << initUnit.toString();
             }
+        } catch (const std::runtime_error &e) {
+            diag(VD->getLocation(), "Invalid unit annotation: %0") << e.what();
         }
     }
 };
 
-// Register the Clang-Tidy module and check.
+// Register the check
 class DimensionalAnalysisModule : public clang::tidy::ClangTidyModule {
 public:
     void addCheckFactories(clang::tidy::ClangTidyCheckFactories &Factories) override {
@@ -253,6 +338,5 @@ public:
     }
 };
 
-// Register the module using this statically initialized variable.
 static clang::tidy::ClangTidyModuleRegistry::Add<DimensionalAnalysisModule>
     X("dimensional-analysis-module", "Adds dimensional analysis checks.");
