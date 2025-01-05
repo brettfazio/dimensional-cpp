@@ -237,6 +237,12 @@ public:
             functionDecl(hasAttr(attr::Annotate))
             .bind("annotatedFunc"),
             this);
+
+        // Match function calls
+        Finder->addMatcher(
+            callExpr(callee(functionDecl().bind("callee")))
+            .bind("call"),
+            this);
     }
 
     Unit inferExpressionUnit(const Expr* E) {
@@ -286,7 +292,38 @@ public:
         return Unit();
     }
 
+    void checkFunctionCall(const CallExpr* call, const FunctionDecl* callee) {
+        // Check each argument against the corresponding parameter's annotation
+        unsigned numParams = callee->getNumParams();
+        unsigned numArgs = call->getNumArgs();
+
+        for (unsigned i = 0; i < numParams && i < numArgs; ++i) {
+            const ParmVarDecl* param = callee->getParamDecl(i);
+            const Expr* arg = call->getArg(i);
+
+            // If parameter has unit annotation
+            if (const auto* paramAnnot = param->getAttr<AnnotateAttr>()) {
+                Unit expectedUnit = parseAnnotation(paramAnnot->getAnnotation().str());
+                Unit argUnit = inferExpressionUnit(arg);
+
+                if (!(expectedUnit == argUnit)) {
+                    diag(arg->getExprLoc(),
+                         "Argument unit mismatch: parameter expects unit %0 but provided unit %1")
+                        << expectedUnit.toString()
+                        << argUnit.toString();
+                }
+            }
+        }
+    }
+
     void check(const MatchFinder::MatchResult &Result) override {
+        // Handle function calls
+        if (const auto *call = Result.Nodes.getNodeAs<CallExpr>("call")) {
+            if (const auto *callee = Result.Nodes.getNodeAs<FunctionDecl>("callee")) {
+                checkFunctionCall(call, callee);
+            }
+        }
+
         // Handle annotated functions
         if (const auto *FD = Result.Nodes.getNodeAs<FunctionDecl>("annotatedFunc")) {
             if (const auto *annotateAttr = FD->getAttr<AnnotateAttr>()) {
@@ -308,10 +345,8 @@ public:
             return;
 
         try {
-            // Get the unit of the initializer
             Unit initUnit = inferExpressionUnit(Init);
 
-            // If initializer has units but variable doesn't have annotation
             if (initUnit.toString() != "unitless" && !VD->hasAttr<AnnotateAttr>()) {
                 diag(VD->getLocation(),
                      "Unit safety violation: assigning value with unit %0 to variable without unit annotation")
@@ -319,7 +354,6 @@ public:
                 return;
             }
 
-            // If variable has annotation, verify units match
             if (const auto *annotateAttr = VD->getAttr<AnnotateAttr>()) {
                 Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
                 varUnits[VD] = declaredUnit;
