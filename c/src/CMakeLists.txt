@@ -31,17 +31,11 @@ link_directories(${LLVM_LIB_PATH})
 add_library(${PLUGIN_NAME} SHARED ${PLUGIN_SRC})
 target_link_libraries(${PLUGIN_NAME} clangTidy LLVM clang-cpp clang)
 
-# Test configuration
-set(TEST_SRC test.cpp)
-set(TEST_OUT test.out)
-
-# Add a custom command to run Clang-Tidy with the plugin
-add_custom_target(test
-    COMMAND ${CLANG_TIDY} ${TEST_SRC} --load=${CMAKE_BINARY_DIR}/${PLUGIN_SO} --checks=-*,custom-dim-analys-check
-    COMMAND cat ${TEST_OUT}
-    DEPENDS ${PLUGIN_NAME} ${TEST_SRC}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-)
-
 # Make sure the clean target is run after the build
 set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_BINARY_DIR}/${PLUGIN_SO})
+
+add_custom_target(run_tests
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/../../python/run_tests.py
+    DEPENDS ${PLUGIN_NAME}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
