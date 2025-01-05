@@ -18,6 +18,7 @@ def run_clang_tidy(file_path):
                 f"--load={plugin_path}",
                 f"--config-file={config_file}",
                 file_path,
+                "tests/helper.hh",
             ],
             capture_output=True,
             text=True,
