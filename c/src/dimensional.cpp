@@ -221,30 +221,7 @@ class DimensionalAnalysisCheck : public clang::tidy::ClangTidyCheck {
     std::map<const VarDecl*, Unit> varUnits;
     std::map<const FunctionDecl*, Unit> functionUnits;
 
-public:
-    DimensionalAnalysisCheck(StringRef Name, clang::tidy::ClangTidyContext *Context)
-        : ClangTidyCheck(Name, Context) {}
-
-    void registerMatchers(MatchFinder *Finder) override {
-        // Match all variable declarations with initializers
-        Finder->addMatcher(
-            varDecl(hasInitializer(expr().bind("init")))
-            .bind("var"),
-            this);
-
-        // Match function declarations with annotations
-        Finder->addMatcher(
-            functionDecl(hasAttr(attr::Annotate))
-            .bind("annotatedFunc"),
-            this);
-
-        // Match function calls
-        Finder->addMatcher(
-            callExpr(callee(functionDecl().bind("callee")))
-            .bind("call"),
-            this);
-    }
-
+private:
     Unit inferExpressionUnit(const Expr* E) {
         E = E->IgnoreParenImpCasts();
 
@@ -292,6 +269,80 @@ public:
         return Unit();
     }
 
+public:
+    DimensionalAnalysisCheck(StringRef Name, clang::tidy::ClangTidyContext *Context)
+        : ClangTidyCheck(Name, Context) {}
+
+    void registerMatchers(MatchFinder *Finder) override {
+        // Match all variable declarations with initializers
+        Finder->addMatcher(
+            varDecl(hasInitializer(expr().bind("init")))
+            .bind("var"),
+            this);
+
+        // Match function declarations with annotations
+        Finder->addMatcher(
+            functionDecl(hasAttr(attr::Annotate))
+            .bind("annotatedFunc"),
+            this);
+
+        // Match function calls
+        Finder->addMatcher(
+            callExpr(callee(functionDecl().bind("callee")))
+            .bind("call"),
+            this);
+
+        // Add matcher for return statements in annotated functions
+        Finder->addMatcher(
+            returnStmt(hasReturnValue(expr().bind("returnValue")),
+                      hasAncestor(functionDecl(hasAttr(attr::Annotate)).bind("containingFunc")))
+            .bind("return"),
+            this);
+    }
+
+    void checkFunctionDeclaration(const FunctionDecl* FD) {
+        if (const auto* annotateAttr = FD->getAttr<AnnotateAttr>()) {
+            try {
+                Unit functionUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+                functionUnits[FD] = functionUnit;
+
+                // Check function body if it's defined
+                if (FD->hasBody()) {
+                    const Stmt* body = FD->getBody();
+                    checkFunctionBody(body, FD);
+                }
+            } catch (const std::runtime_error& e) {
+                diag(FD->getLocation(), "Invalid unit annotation on function: %0") << e.what();
+            }
+        }
+    }
+
+    void checkFunctionBody(const Stmt* S, const FunctionDecl* FD) {
+        if (!S) return;
+
+        // Check return statements
+        if (const auto* returnStmt = dyn_cast<ReturnStmt>(S)) {
+            if (const Expr* returnValue = returnStmt->getRetValue()) {
+                Unit returnUnit = inferExpressionUnit(returnValue);
+                Unit expectedUnit = functionUnits[FD];
+
+                if (!(expectedUnit == returnUnit)) {
+                    diag(returnValue->getExprLoc(),
+                         "Return value unit mismatch: function expects %0 but returning %1")
+                        << expectedUnit.toString()
+                        << returnUnit.toString();
+                }
+            }
+        }
+
+        // Recursively check all child statements
+        for (const Stmt* child : S->children()) {
+            if (child) {
+                checkFunctionBody(child, FD);
+            }
+        }
+    }
+
     void checkFunctionCall(const CallExpr* call, const FunctionDecl* callee) {
         // Check each argument against the corresponding parameter's annotation
         unsigned numParams = callee->getNumParams();
@@ -314,6 +365,12 @@ public:
                 }
             }
         }
+
+        // Also check that the return value matches the function's declared unit
+        if (const auto* returnAnnot = callee->getAttr<AnnotateAttr>()) {
+            Unit expectedReturnUnit = parseAnnotation(returnAnnot->getAnnotation().str());
+            functionUnits[callee] = expectedReturnUnit;
+        }
     }
 
     void check(const MatchFinder::MatchResult &Result) override {
@@ -326,15 +383,25 @@ public:
 
         // Handle annotated functions
         if (const auto *FD = Result.Nodes.getNodeAs<FunctionDecl>("annotatedFunc")) {
-            if (const auto *annotateAttr = FD->getAttr<AnnotateAttr>()) {
-                try {
-                    Unit functionUnit = parseAnnotation(annotateAttr->getAnnotation().str());
-                    functionUnits[FD] = functionUnit;
-                } catch (const std::runtime_error &e) {
-                    diag(FD->getLocation(), "Invalid unit annotation on function: %0") << e.what();
+            checkFunctionDeclaration(FD);
+            return;
+        }
+
+        // Handle return statements
+        if (const auto *returnStmt = Result.Nodes.getNodeAs<ReturnStmt>("return")) {
+            if (const auto *containingFunc = Result.Nodes.getNodeAs<FunctionDecl>("containingFunc")) {
+                const Expr* returnValue = returnStmt->getRetValue();
+                if (returnValue) {
+                    Unit returnUnit = inferExpressionUnit(returnValue);
+                    auto it = functionUnits.find(containingFunc);
+                    if (it != functionUnits.end() && !(it->second == returnUnit)) {
+                        diag(returnValue->getExprLoc(),
+                             "Return value unit mismatch: function expects %0 but returning %1")
+                            << it->second.toString()
+                            << returnUnit.toString();
+                    }
                 }
             }
-            return;
         }
 
         // Handle all variable declarations

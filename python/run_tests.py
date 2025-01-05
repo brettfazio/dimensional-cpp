@@ -38,7 +38,7 @@ def main():
             file_path = os.path.join(right_dir, test_file)
             output = run_clang_tidy(file_path)
             if "error:" in output or "warning:" in output:
-                results.append((file_path, "FAILED", "Expected no errors but found errors."))
+                results.append((file_path, "FAILED", f"Expected no errors but found errors. {output}"))
             else:
                 results.append((file_path, "PASSED"))
 
