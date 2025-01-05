@@ -9,3 +9,7 @@ T as_km(T value) { return value; }
 template<typename T>
 [[clang::annotate("unit:hour")]] 
 T as_hour(T value) { return value; }
+
+struct Miles {
+    [[clang::annotate("unit:miles")]] int value;
+};

@@ -27,6 +27,26 @@ def run_clang_tidy(file_path):
         print(f"Error: {clang_tidy} not found.")
         sys.exit(1)
 
+def analyze_output(output, is_right):
+    """
+    Analyze the clang-tidy output for correctness:
+    - If `is_right` is True, there should be no errors or warnings.
+    - If `is_right` is False, there should be plugin-specific errors/warnings, but no "clang-diagnostic-error".
+    """
+    errors_or_warnings = "error:" in output or "warning:" in output
+    clang_diagnostic_error = "clang-diagnostic-error" in output
+
+    if is_right:
+        # "Right" cases should have no errors or warnings.
+        return not errors_or_warnings, f"Expected no errors or warnings. {output}"
+    else:
+        # "Wrong" cases should have plugin-specific errors/warnings and no "clang-diagnostic-error".
+        if not errors_or_warnings:
+            return False, "Expected errors or warnings but found none."
+        if clang_diagnostic_error:
+            return False, f"Unexpected 'clang-diagnostic-error' found. {output}"
+        return True, ""
+
 def main():
     test_dir = "tests"
     results = []
@@ -37,10 +57,11 @@ def main():
         if test_file.endswith(".cpp"):
             file_path = os.path.join(right_dir, test_file)
             output = run_clang_tidy(file_path)
-            if "error:" in output or "warning:" in output:
-                results.append((file_path, "FAILED", f"Expected no errors but found errors. {output}"))
-            else:
+            passed, message = analyze_output(output, is_right=True)
+            if passed:
                 results.append((file_path, "PASSED"))
+            else:
+                results.append((file_path, "FAILED", message))
 
     # Test "wrong" cases
     wrong_dir = os.path.join(test_dir, "wrong")
@@ -48,10 +69,11 @@ def main():
         if test_file.endswith(".cpp"):
             file_path = os.path.join(wrong_dir, test_file)
             output = run_clang_tidy(file_path)
-            if "error:" in output or "warning:" in output:
+            passed, message = analyze_output(output, is_right=False)
+            if passed:
                 results.append((file_path, "PASSED"))
             else:
-                results.append((file_path, "FAILED", "Expected errors but found none."))
+                results.append((file_path, "FAILED", message))
 
     # Print results
     for result in results:

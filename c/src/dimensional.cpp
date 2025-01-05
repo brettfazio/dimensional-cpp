@@ -259,6 +259,15 @@ private:
         
         E = E->IgnoreParenImpCasts();
 
+        // Handle member expressions (e.g., `values[0].value`)
+        if (const auto* memberExpr = dyn_cast<MemberExpr>(E)) {
+            if (const auto* memberDecl = memberExpr->getMemberDecl()) {
+                if (const auto* annotateAttr = memberDecl->getAttr<AnnotateAttr>()) {
+                    return parseAnnotation(annotateAttr->getAnnotation().str());
+                }
+            }
+        }
+
         // Handle function calls
         if (const auto* call = dyn_cast<CallExpr>(E)) {
             if (const auto* callee = call->getDirectCallee()) {
