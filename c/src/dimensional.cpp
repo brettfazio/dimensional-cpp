@@ -227,29 +227,31 @@ public:
         : ClangTidyCheck(Name, Context) {}
 
     void registerMatchers(MatchFinder *Finder) override {
-        // Match all variable declarations with initializers
+        // Match variable declarations with initializers
         Finder->addMatcher(
-            varDecl(hasInitializer(expr().bind("init")))
-            .bind("var"),
+            varDecl(hasInitializer(expr().bind("init"))).bind("var"),
             this);
 
         // Match function declarations with annotations
         Finder->addMatcher(
-            functionDecl(hasAttr(attr::Annotate))
-            .bind("annotatedFunc"),
+            functionDecl(hasAttr(attr::Annotate)).bind("annotatedFunc"),
             this);
 
         // Match function calls
         Finder->addMatcher(
-            callExpr(callee(functionDecl().bind("callee")))
-            .bind("call"),
+            callExpr(callee(functionDecl().bind("callee"))).bind("call"),
             this);
 
         // Match return statements in annotated functions
         Finder->addMatcher(
             returnStmt(hasReturnValue(expr().bind("returnValue")),
-                      hasAncestor(functionDecl(hasAttr(attr::Annotate)).bind("containingFunc")))
+                    hasAncestor(functionDecl(hasAttr(attr::Annotate)).bind("containingFunc")))
             .bind("return"),
+            this);
+
+        // Match `if` conditions
+        Finder->addMatcher(
+            ifStmt(hasCondition(expr().bind("ifCondition"))).bind("ifStmt"),
             this);
     }
 
@@ -301,24 +303,35 @@ private:
                 }
             }
         }
-        // Handle binary operations
-        else if (const auto* binOp = dyn_cast<BinaryOperator>(E)) {
+        
+        // Handle binary operators
+        if (const auto* binOp = dyn_cast<BinaryOperator>(E)) {
             Unit leftUnit = inferExpressionUnit(binOp->getLHS());
             Unit rightUnit = inferExpressionUnit(binOp->getRHS());
-            
+
             switch (binOp->getOpcode()) {
-                case BO_Mul:
-                    return leftUnit * rightUnit;
-                case BO_Div:
-                    return leftUnit / rightUnit;
                 case BO_Add:
                 case BO_Sub:
                     if (!(leftUnit == rightUnit)) {
-                        diag(binOp->getOperatorLoc(), "Mismatched units in operation");
+                        diag(binOp->getOperatorLoc(), "Mismatched units in addition/subtraction");
                     }
-                    return leftUnit;
+                    return leftUnit; // Units must match
+                case BO_Mul:
+                    return leftUnit * rightUnit; // Combine units
+                case BO_Div:
+                    return leftUnit / rightUnit; // Combine units
+                case BO_LT:
+                case BO_GT:
+                case BO_LE:
+                case BO_GE:
+                case BO_EQ:
+                case BO_NE:
+                    if (!(leftUnit == rightUnit)) {
+                        diag(binOp->getOperatorLoc(), "Comparison of mismatched units");
+                    }
+                    return Unit(); // Comparisons return unitless values
                 default:
-                    return Unit();
+                    return Unit(); // Unsupported operations are treated as unitless
             }
         }
         
@@ -377,6 +390,12 @@ public:
                          "Unit safety violation: assigning value with unit %0 to variable without unit annotation")
                         << initUnit.toString();
                 }
+            }
+        }
+
+        if (const auto *ifStmt = Result.Nodes.getNodeAs<IfStmt>("ifStmt")) {
+            if (const auto *cond = Result.Nodes.getNodeAs<Expr>("ifCondition")) {
+                inferExpressionUnit(cond); // This will trigger diagnostics for mismatched units
             }
         }
 
