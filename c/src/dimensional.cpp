@@ -220,54 +220,7 @@ Unit parseAnnotation(const std::string &annotation) {
 class DimensionalAnalysisCheck : public clang::tidy::ClangTidyCheck {
     std::map<const VarDecl*, Unit> varUnits;
     std::map<const FunctionDecl*, Unit> functionUnits;
-
-private:
-    Unit inferExpressionUnit(const Expr* E) {
-        E = E->IgnoreParenImpCasts();
-
-        // Handle function calls
-        if (const auto* call = dyn_cast<CallExpr>(E)) {
-            if (const auto* callee = call->getDirectCallee()) {
-                // Check if the function has a unit annotation
-                if (const auto* annotateAttr = callee->getAttr<AnnotateAttr>()) {
-                    return parseAnnotation(annotateAttr->getAnnotation().str());
-                }
-                
-                // Check if we have a stored unit for this function
-                auto it = functionUnits.find(callee);
-                if (it != functionUnits.end()) {
-                    return it->second;
-                }
-            }
-            return Unit();
-        }
-
-        if (const auto* declRef = dyn_cast<DeclRefExpr>(E)) {
-            if (const auto* varDecl = dyn_cast<VarDecl>(declRef->getDecl())) {
-                auto it = varUnits.find(varDecl);
-                if (it != varUnits.end()) {
-                    return it->second;
-                }
-            }
-        } else if (const auto* binOp = dyn_cast<BinaryOperator>(E)) {
-            Unit leftUnit = inferExpressionUnit(binOp->getLHS());
-            Unit rightUnit = inferExpressionUnit(binOp->getRHS());
-            
-            switch (binOp->getOpcode()) {
-                case BO_Mul:
-                    return leftUnit * rightUnit;
-                case BO_Div:
-                    return leftUnit / rightUnit;
-                default:
-                    if (!(leftUnit == rightUnit)) {
-                        diag(binOp->getOperatorLoc(), "Mismatched units in operation");
-                    }
-                    return leftUnit;
-            }
-        }
-        
-        return Unit();
-    }
+    std::map<const ParmVarDecl*, Unit> paramUnits;
 
 public:
     DimensionalAnalysisCheck(StringRef Name, clang::tidy::ClangTidyContext *Context)
@@ -292,7 +245,7 @@ public:
             .bind("call"),
             this);
 
-        // Add matcher for return statements in annotated functions
+        // Match return statements in annotated functions
         Finder->addMatcher(
             returnStmt(hasReturnValue(expr().bind("returnValue")),
                       hasAncestor(functionDecl(hasAttr(attr::Annotate)).bind("containingFunc")))
@@ -300,42 +253,85 @@ public:
             this);
     }
 
-    void checkFunctionDeclaration(const FunctionDecl* FD) {
-        if (const auto* annotateAttr = FD->getAttr<AnnotateAttr>()) {
-            try {
-                Unit functionUnit = parseAnnotation(annotateAttr->getAnnotation().str());
-                functionUnits[FD] = functionUnit;
+private:
+    Unit inferExpressionUnit(const Expr* E) {
+        if (!E) return Unit();
+        
+        E = E->IgnoreParenImpCasts();
 
-                // Check function body if it's defined
-                if (FD->hasBody()) {
-                    const Stmt* body = FD->getBody();
-                    checkFunctionBody(body, FD);
+        // Handle function calls
+        if (const auto* call = dyn_cast<CallExpr>(E)) {
+            if (const auto* callee = call->getDirectCallee()) {
+                if (const auto* annotateAttr = callee->getAttr<AnnotateAttr>()) {
+                    return parseAnnotation(annotateAttr->getAnnotation().str());
                 }
-            } catch (const std::runtime_error& e) {
-                diag(FD->getLocation(), "Invalid unit annotation on function: %0") << e.what();
+                auto it = functionUnits.find(callee);
+                if (it != functionUnits.end()) {
+                    return it->second;
+                }
             }
         }
+        // Handle parameter references
+        else if (const auto* declRef = dyn_cast<DeclRefExpr>(E)) {
+            if (const auto* parmDecl = dyn_cast<ParmVarDecl>(declRef->getDecl())) {
+                if (const auto* annotateAttr = parmDecl->getAttr<AnnotateAttr>()) {
+                    return parseAnnotation(annotateAttr->getAnnotation().str());
+                }
+                auto it = paramUnits.find(parmDecl);
+                if (it != paramUnits.end()) {
+                    return it->second;
+                }
+            }
+            else if (const auto* varDecl = dyn_cast<VarDecl>(declRef->getDecl())) {
+                if (const auto* annotateAttr = varDecl->getAttr<AnnotateAttr>()) {
+                    return parseAnnotation(annotateAttr->getAnnotation().str());
+                }
+                auto it = varUnits.find(varDecl);
+                if (it != varUnits.end()) {
+                    return it->second;
+                }
+            }
+        }
+        // Handle binary operations
+        else if (const auto* binOp = dyn_cast<BinaryOperator>(E)) {
+            Unit leftUnit = inferExpressionUnit(binOp->getLHS());
+            Unit rightUnit = inferExpressionUnit(binOp->getRHS());
+            
+            switch (binOp->getOpcode()) {
+                case BO_Mul:
+                    return leftUnit * rightUnit;
+                case BO_Div:
+                    return leftUnit / rightUnit;
+                case BO_Add:
+                case BO_Sub:
+                    if (!(leftUnit == rightUnit)) {
+                        diag(binOp->getOperatorLoc(), "Mismatched units in operation");
+                    }
+                    return leftUnit;
+                default:
+                    return Unit();
+            }
+        }
+        
+        return Unit();
     }
 
     void checkFunctionBody(const Stmt* S, const FunctionDecl* FD) {
         if (!S) return;
 
-        // Check return statements
         if (const auto* returnStmt = dyn_cast<ReturnStmt>(S)) {
             if (const Expr* returnValue = returnStmt->getRetValue()) {
                 Unit returnUnit = inferExpressionUnit(returnValue);
-                Unit expectedUnit = functionUnits[FD];
-
-                if (!(expectedUnit == returnUnit)) {
+                auto it = functionUnits.find(FD);
+                if (it != functionUnits.end() && !(it->second == returnUnit)) {
                     diag(returnValue->getExprLoc(),
                          "Return value unit mismatch: function expects %0 but returning %1")
-                        << expectedUnit.toString()
+                        << it->second.toString()
                         << returnUnit.toString();
                 }
             }
         }
 
-        // Recursively check all child statements
         for (const Stmt* child : S->children()) {
             if (child) {
                 checkFunctionBody(child, FD);
@@ -343,55 +339,77 @@ public:
         }
     }
 
-    void checkFunctionCall(const CallExpr* call, const FunctionDecl* callee) {
-        // Check each argument against the corresponding parameter's annotation
-        unsigned numParams = callee->getNumParams();
-        unsigned numArgs = call->getNumArgs();
+    void storeFunctionParameterUnits(const FunctionDecl* FD) {
+        for (const ParmVarDecl* param : FD->parameters()) {
+            if (const auto* annotateAttr = param->getAttr<AnnotateAttr>()) {
+                paramUnits[param] = parseAnnotation(annotateAttr->getAnnotation().str());
+            }
+        }
+    }
 
-        for (unsigned i = 0; i < numParams && i < numArgs; ++i) {
-            const ParmVarDecl* param = callee->getParamDecl(i);
-            const Expr* arg = call->getArg(i);
-
-            // If parameter has unit annotation
-            if (const auto* paramAnnot = param->getAttr<AnnotateAttr>()) {
-                Unit expectedUnit = parseAnnotation(paramAnnot->getAnnotation().str());
-                Unit argUnit = inferExpressionUnit(arg);
-
-                if (!(expectedUnit == argUnit)) {
-                    diag(arg->getExprLoc(),
-                         "Argument unit mismatch: parameter expects unit %0 but provided unit %1")
-                        << expectedUnit.toString()
-                        << argUnit.toString();
+public:
+    void check(const MatchFinder::MatchResult &Result) override {
+        if (const auto* VD = Result.Nodes.getNodeAs<VarDecl>("var")) {
+            if (const auto* Init = Result.Nodes.getNodeAs<Expr>("init")) {
+                Unit initUnit = inferExpressionUnit(Init);
+                
+                if (const auto* annotateAttr = VD->getAttr<AnnotateAttr>()) {
+                    Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+                    varUnits[VD] = declaredUnit;
+                    
+                    if (!(declaredUnit == initUnit)) {
+                        diag(VD->getLocation(),
+                             "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
+                            << declaredUnit.toString()
+                            << initUnit.toString();
+                    }
+                } else if (initUnit.toString() != "unitless") {
+                    diag(VD->getLocation(),
+                         "Unit safety violation: assigning value with unit %0 to variable without unit annotation")
+                        << initUnit.toString();
                 }
             }
         }
 
-        // Also check that the return value matches the function's declared unit
-        if (const auto* returnAnnot = callee->getAttr<AnnotateAttr>()) {
-            Unit expectedReturnUnit = parseAnnotation(returnAnnot->getAnnotation().str());
-            functionUnits[callee] = expectedReturnUnit;
-        }
-    }
+        if (const auto* call = Result.Nodes.getNodeAs<CallExpr>("call")) {
+            if (const auto* callee = Result.Nodes.getNodeAs<FunctionDecl>("callee")) {
+                unsigned numParams = callee->getNumParams();
+                unsigned numArgs = call->getNumArgs();
 
-    void check(const MatchFinder::MatchResult &Result) override {
-        // Handle function calls
-        if (const auto *call = Result.Nodes.getNodeAs<CallExpr>("call")) {
-            if (const auto *callee = Result.Nodes.getNodeAs<FunctionDecl>("callee")) {
-                checkFunctionCall(call, callee);
+                for (unsigned i = 0; i < numParams && i < numArgs; ++i) {
+                    const ParmVarDecl* param = callee->getParamDecl(i);
+                    const Expr* arg = call->getArg(i);
+
+                    if (const auto* paramAnnot = param->getAttr<AnnotateAttr>()) {
+                        Unit expectedUnit = parseAnnotation(paramAnnot->getAnnotation().str());
+                        Unit argUnit = inferExpressionUnit(arg);
+
+                        if (!(expectedUnit == argUnit)) {
+                            diag(arg->getExprLoc(),
+                                 "Argument unit mismatch: parameter expects unit %0 but provided unit %1")
+                                << expectedUnit.toString()
+                                << argUnit.toString();
+                        }
+                    }
+                }
             }
         }
 
-        // Handle annotated functions
-        if (const auto *FD = Result.Nodes.getNodeAs<FunctionDecl>("annotatedFunc")) {
-            checkFunctionDeclaration(FD);
-            return;
+        if (const auto* FD = Result.Nodes.getNodeAs<FunctionDecl>("annotatedFunc")) {
+            if (const auto* annotateAttr = FD->getAttr<AnnotateAttr>()) {
+                Unit functionUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+                functionUnits[FD] = functionUnit;
+                storeFunctionParameterUnits(FD);
+
+                if (FD->hasBody()) {
+                    checkFunctionBody(FD->getBody(), FD);
+                }
+            }
         }
 
-        // Handle return statements
-        if (const auto *returnStmt = Result.Nodes.getNodeAs<ReturnStmt>("return")) {
-            if (const auto *containingFunc = Result.Nodes.getNodeAs<FunctionDecl>("containingFunc")) {
-                const Expr* returnValue = returnStmt->getRetValue();
-                if (returnValue) {
+        if (const auto* returnStmt = Result.Nodes.getNodeAs<ReturnStmt>("return")) {
+            if (const auto* containingFunc = Result.Nodes.getNodeAs<FunctionDecl>("containingFunc")) {
+                if (const Expr* returnValue = returnStmt->getRetValue()) {
                     Unit returnUnit = inferExpressionUnit(returnValue);
                     auto it = functionUnits.find(containingFunc);
                     if (it != functionUnits.end() && !(it->second == returnUnit)) {
@@ -402,38 +420,6 @@ public:
                     }
                 }
             }
-        }
-
-        // Handle all variable declarations
-        const auto *VD = Result.Nodes.getNodeAs<VarDecl>("var");
-        const auto *Init = Result.Nodes.getNodeAs<Expr>("init");
-        
-        if (!VD || !Init)
-            return;
-
-        try {
-            Unit initUnit = inferExpressionUnit(Init);
-
-            if (initUnit.toString() != "unitless" && !VD->hasAttr<AnnotateAttr>()) {
-                diag(VD->getLocation(),
-                     "Unit safety violation: assigning value with unit %0 to variable without unit annotation")
-                    << initUnit.toString();
-                return;
-            }
-
-            if (const auto *annotateAttr = VD->getAttr<AnnotateAttr>()) {
-                Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
-                varUnits[VD] = declaredUnit;
-                
-                if (!(declaredUnit == initUnit)) {
-                    diag(VD->getLocation(),
-                         "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
-                        << declaredUnit.toString()
-                        << initUnit.toString();
-                }
-            }
-        } catch (const std::runtime_error &e) {
-            diag(VD->getLocation(), "Invalid unit annotation: %0") << e.what();
         }
     }
 };
