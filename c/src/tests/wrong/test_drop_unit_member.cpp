@@ -6,4 +6,4 @@ struct Data {
 
 constexpr int X = 32;
 
-Data d = (Data){.x = X};
+Data d = {.x = X};
