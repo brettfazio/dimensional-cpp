@@ -469,7 +469,6 @@ void check(const MatchFinder::MatchResult &Result) override {
             // Now perform the checks:
             
             // Case 1: Variable has no unit annotation but initializer has units
-            // std::cout << hasAnnotation << " " << initUnit.toString() << std::endl;
             if (!hasAnnotation && initUnit.toString() != "unitless") {
                 diag(VD->getLocation(),
                      "Unit safety violation: cannot drop units - assigning value with unit %0 to variable without unit annotation")
@@ -479,11 +478,14 @@ void check(const MatchFinder::MatchResult &Result) override {
 
             // Case 2: Variable has unit annotation but units don't match
             if (hasAnnotation && !(declaredUnit == initUnit)) {
-                diag(VD->getLocation(),
-                     "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
-                    << declaredUnit.toString()
-                    << initUnit.toString();
-                return;
+                // Allow explicit unit annotation to override unit mismatch
+                if (!isExplicit) {
+                    diag(VD->getLocation(),
+                         "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
+                        << declaredUnit.toString()
+                        << initUnit.toString();
+                    return;
+                }
             }
 
             // Store the unit information
