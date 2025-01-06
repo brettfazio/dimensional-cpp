@@ -8,8 +8,8 @@
 #define H [[clang::annotate("unit:hour")]]
 #define MIN [[clang::annotate("unit:minute")]]
 #define SEC [[clang::annotate("unit:second")]]
-#define MPH [[clang::annotate("unit:miles_per_hour")]]
-#define KPH [[clang::annotate("unit:km_per_hour")]]
+#define MPH [[clang::annotate("unit:miles/hour")]]
+#define KPH [[clang::annotate("unit:km/hour")]]
 
 struct Miles {
     M double value;
@@ -56,7 +56,7 @@ MPH double calculateAverageSpeed(const std::vector<Miles>& distances,
     for (const auto& m : distances) {
         totalDistance += m.value;
     }
-    H double totalTime = std::accumulate(times.begin(), times.end(), as_hours(0.0));
+    H double totalTime = as_hours(0);
     for (const auto& t : times) {
         totalTime += t.value;
     }
