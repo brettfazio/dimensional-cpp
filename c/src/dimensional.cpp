@@ -314,7 +314,6 @@ private:
     E = E->IgnoreParenImpCasts();
 
     if (const auto *initList = dyn_cast<InitListExpr>(E)) {
-      std::cout << "HERE!" << std::endl;
       const auto *varDecl =
           dyn_cast_or_null<VarDecl>(Result.Nodes.getNodeAs<VarDecl>("var"));
       if (!varDecl)
@@ -570,6 +569,9 @@ public:
           }
         }
       }
+    }
+
+    if (const auto *DI = Result.Nodes.getNodeAs<InitListExpr>("initList")) {
     }
 
     if (const auto *FD =
