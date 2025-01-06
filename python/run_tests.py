@@ -35,7 +35,7 @@ def analyze_output(output, is_right):
     - If `is_right` is False, there should be plugin-specific errors/warnings, but no "clang-diagnostic-error".
     """
     errors_or_warnings = "error:" in output or "warning:" in output
-    clang_diagnostic_error = "clang-diagnostic-error" in output
+    clang_diagnostic_error = "clang-diagnostic-error" in output or 'Error: no checks enabled' in output
 
     if is_right:
         # "Right" cases should have no errors or warnings.
@@ -43,7 +43,7 @@ def analyze_output(output, is_right):
     else:
         # "Wrong" cases should have plugin-specific errors/warnings and no "clang-diagnostic-error".
         if not errors_or_warnings:
-            return False, "Expected errors or warnings but found none."
+            return False, f"Expected errors or warnings but found none. {output}"
         if clang_diagnostic_error:
             return False, f"Unexpected 'clang-diagnostic-error' found. {output}"
         return True, ""

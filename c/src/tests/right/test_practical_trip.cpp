@@ -11,7 +11,7 @@
 #define MPH [[clang::annotate("unit:miles/hour")]]
 #define KPH [[clang::annotate("unit:km/hour")]]
 
-#define EXPLICIT [[clang::annotate("explicit")]]
+#define EXPLICIT [[clang::annotate("explicit_unit_annotation")]]
 
 struct Miles {
     M double value;
@@ -21,24 +21,9 @@ struct Hours {
     H double value;
 };
 
-template <typename T>
-M EXPLICIT T as_miles(T value) { return value; }
-
 Miles as_miles_t(double value) { return (Miles){value}; }
 
-template <typename T>
-KM EXPLICIT T as_km(T value) { return value; }
-
-template <typename T>
-H EXPLICIT T as_hours(T value) { return value; }
-
 Hours as_hours_t(double value) { return (Hours){value}; }
-
-template <typename T>
-MIN EXPLICIT T as_minutes(T value) { return value; }
-
-template <typename T>
-SEC EXPLICIT T as_seconds(T value) { return value; }
 
 template <typename T>
 MPH T to_mph(M T distance, H T time) { return distance / time; }
@@ -54,17 +39,18 @@ MPH double calculateAverageSpeed(const std::vector<Miles>& distances,
     }
 
     // Compute total distance and time
-    M double totalDistance = as_miles(0.0);
+    M EXPLICIT double totalDistance = 0.0;
     for (const auto& m : distances) {
         totalDistance += m.value;
     }
-    H double totalTime = as_hours(0);
+    H EXPLICIT double totalTime = 0.0;
     for (const auto& t : times) {
         totalTime += t.value;
     }
 
     // Validate units
-    if (totalTime <= as_hours(0.0)) {
+    H EXPLICIT double zeroHours = 0.0;
+    if (totalTime <= zeroHours) {
         throw std::logic_error("Total time must be positive.");
     }
 

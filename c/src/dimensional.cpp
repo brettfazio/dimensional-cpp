@@ -5,6 +5,7 @@
 #include <vector>
 #include <cctype>
 #include <algorithm>
+#include <iostream>
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -200,10 +201,14 @@ Unit evaluateUnitTree(const UnitNode *node) {
     throw std::runtime_error("Unknown operator in unit expression");
 }
 
-// Parse and evaluate a unit annotation string.
 Unit parseAnnotation(const std::string &annotation) {
-    if (annotation.find("unit:") != 0 && annotation.find("explicitunit:") != 0) {
-        throw std::runtime_error("Invalid unit annotation format: " + annotation);
+    // Handle explicit unit annotations
+    if (annotation == "explicit_unit_annotation") {
+        return Unit(); // Return empty unit to indicate explicit annotation
+    }
+    
+    if (annotation.find("unit:") != 0) {
+        throw std::runtime_error("Invalid unit annotation format");
     }
     std::string unitString = annotation.substr(5);
     auto tokens = tokenize(unitString);
@@ -215,6 +220,45 @@ Unit parseAnnotation(const std::string &annotation) {
     }
 
     return evaluateUnitTree(unitTree.get());
+}
+
+// Add helper function to get all annotations for a declaration
+std::vector<std::string> getAllAnnotations(const Decl* D) {
+    std::vector<std::string> annotations;
+    for (const auto* attr : D->specific_attrs<AnnotateAttr>()) {
+        annotations.push_back(attr->getAnnotation().str());
+    }
+    return annotations;
+}
+
+// Add helper function to check if a declaration has explicit unit annotation
+bool hasExplicitUnitAnnotation(const Decl* D) {
+    for (const auto* attr : D->specific_attrs<AnnotateAttr>()) {
+        if (attr->getAnnotation().str() == "explicit_unit_annotation") {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Add helper function to get unit from annotations
+Unit getUnitFromAnnotations(const Decl* D) {
+    Unit resultUnit;
+    bool foundUnit = false;
+    
+    for (const auto* attr : D->specific_attrs<AnnotateAttr>()) {
+        std::string annotation = attr->getAnnotation().str();
+        if (annotation.find("unit:") == 0) {
+            if (foundUnit) {
+                // Multiple unit annotations found - this is an error
+                throw std::runtime_error("Multiple unit annotations found on declaration");
+            }
+            resultUnit = parseAnnotation(annotation);
+            foundUnit = true;
+        }
+    }
+    
+    return resultUnit;
 }
 
 class DimensionalAnalysisCheck : public clang::tidy::ClangTidyCheck {
@@ -256,12 +300,36 @@ public:
     }
 
 private:
-    Unit inferExpressionUnit(const Expr* E) {
+    Unit inferExpressionUnit(const Expr* E, const MatchFinder::MatchResult &Result) {
         if (!E) return Unit();
         
         E = E->IgnoreParenImpCasts();
 
-        // Handle member expressions (e.g., `values[0].value`)
+        // Handle literal constants in explicit unit context
+        if (isa<IntegerLiteral>(E) || isa<FloatingLiteral>(E)) {
+            const auto& parents = Result.Context->getParents(*E);
+            if (!parents.empty()) {
+                const auto* parent = parents[0].get<Decl>();
+                if (const auto* varDecl = dyn_cast_or_null<VarDecl>(parent)) {
+                    if (hasExplicitUnitAnnotation(varDecl)) {
+                        return getUnitFromAnnotations(varDecl);
+                    }
+                }
+                // Handle function returns
+                else if (const auto* returnStmt = parents[0].get<ReturnStmt>()) {
+                    const auto& returnParents = Result.Context->getParents(*returnStmt);
+                    if (!returnParents.empty()) {
+                        if (const auto* funcDecl = returnParents[0].get<FunctionDecl>()) {
+                            if (hasExplicitUnitAnnotation(funcDecl)) {
+                                return getUnitFromAnnotations(funcDecl);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle member expressions
         if (const auto* memberExpr = dyn_cast<MemberExpr>(E)) {
             if (const auto* memberDecl = memberExpr->getMemberDecl()) {
                 if (const auto* annotateAttr = memberDecl->getAttr<AnnotateAttr>()) {
@@ -282,7 +350,7 @@ private:
                 }
             }
         }
-        // Handle parameter references
+        // Handle parameter references and variables
         else if (const auto* declRef = dyn_cast<DeclRefExpr>(E)) {
             if (const auto* parmDecl = dyn_cast<ParmVarDecl>(declRef->getDecl())) {
                 if (const auto* annotateAttr = parmDecl->getAttr<AnnotateAttr>()) {
@@ -294,9 +362,11 @@ private:
                 }
             }
             else if (const auto* varDecl = dyn_cast<VarDecl>(declRef->getDecl())) {
+                // First check for direct unit annotation
                 if (const auto* annotateAttr = varDecl->getAttr<AnnotateAttr>()) {
                     return parseAnnotation(annotateAttr->getAnnotation().str());
                 }
+                // Then check our stored units
                 auto it = varUnits.find(varDecl);
                 if (it != varUnits.end()) {
                     return it->second;
@@ -306,8 +376,8 @@ private:
         
         // Handle binary operators
         if (const auto* binOp = dyn_cast<BinaryOperator>(E)) {
-            Unit leftUnit = inferExpressionUnit(binOp->getLHS());
-            Unit rightUnit = inferExpressionUnit(binOp->getRHS());
+            Unit leftUnit = inferExpressionUnit(binOp->getLHS(), Result);
+            Unit rightUnit = inferExpressionUnit(binOp->getRHS(), Result);
 
             switch (binOp->getOpcode()) {
                 case BO_Add:
@@ -315,11 +385,11 @@ private:
                     if (!(leftUnit == rightUnit)) {
                         diag(binOp->getOperatorLoc(), "Mismatched units in addition/subtraction");
                     }
-                    return leftUnit; // Units must match
+                    return leftUnit;
                 case BO_Mul:
-                    return leftUnit * rightUnit; // Combine units
+                    return leftUnit * rightUnit;
                 case BO_Div:
-                    return leftUnit / rightUnit; // Combine units
+                    return leftUnit / rightUnit;
                 case BO_LT:
                 case BO_GT:
                 case BO_LE:
@@ -329,21 +399,21 @@ private:
                     if (!(leftUnit == rightUnit)) {
                         diag(binOp->getOperatorLoc(), "Comparison of mismatched units");
                     }
-                    return Unit(); // Comparisons return unitless values
+                    return Unit();
                 default:
-                    return Unit(); // Unsupported operations are treated as unitless
+                    return Unit();
             }
         }
         
         return Unit();
     }
 
-    void checkFunctionBody(const Stmt* S, const FunctionDecl* FD) {
+    void checkFunctionBody(const Stmt* S, const FunctionDecl* FD, const MatchFinder::MatchResult &Result) {
         if (!S) return;
 
         if (const auto* returnStmt = dyn_cast<ReturnStmt>(S)) {
             if (const Expr* returnValue = returnStmt->getRetValue()) {
-                Unit returnUnit = inferExpressionUnit(returnValue);
+                Unit returnUnit = inferExpressionUnit(returnValue, Result);
                 auto it = functionUnits.find(FD);
                 if (it != functionUnits.end() && !(it->second == returnUnit)) {
                     diag(returnValue->getExprLoc(),
@@ -356,7 +426,7 @@ private:
 
         for (const Stmt* child : S->children()) {
             if (child) {
-                checkFunctionBody(child, FD);
+                checkFunctionBody(child, FD, Result);
             }
         }
     }
@@ -370,32 +440,60 @@ private:
     }
 
 public:
-    void check(const MatchFinder::MatchResult &Result) override {
-        if (const auto* VD = Result.Nodes.getNodeAs<VarDecl>("var")) {
-            if (const auto* Init = Result.Nodes.getNodeAs<Expr>("init")) {
-                Unit initUnit = inferExpressionUnit(Init);
-                
-                if (const auto* annotateAttr = VD->getAttr<AnnotateAttr>()) {
-                    Unit declaredUnit = parseAnnotation(annotateAttr->getAnnotation().str());
+void check(const MatchFinder::MatchResult &Result) override {
+    if (const auto* VD = Result.Nodes.getNodeAs<VarDecl>("var")) {
+        if (const auto* Init = Result.Nodes.getNodeAs<Expr>("init")) {
+            // First, infer the unit of the initializer
+            Unit initUnit = inferExpressionUnit(Init, Result);
+            
+            // Get any unit annotations on the variable
+            bool hasAnnotation = VD->hasAttr<AnnotateAttr>();
+            bool isExplicit = hasExplicitUnitAnnotation(VD);
+            Unit declaredUnit;
+
+            if (hasAnnotation) {
+                try {
+                    declaredUnit = getUnitFromAnnotations(VD);
                     varUnits[VD] = declaredUnit;
-                    
-                    if (!(declaredUnit == initUnit)) {
-                        diag(VD->getLocation(),
-                             "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
-                            << declaredUnit.toString()
-                            << initUnit.toString();
-                    }
-                } else if (initUnit.toString() != "unitless") {
-                    diag(VD->getLocation(),
-                         "Unit safety violation: assigning value with unit %0 to variable without unit annotation")
-                        << initUnit.toString();
+                } catch (const std::runtime_error& e) {
+                    diag(VD->getLocation(), "Unit annotation error: %0") << e.what();
+                    return;
                 }
             }
+
+            // Special case: explicit unit annotation with literal initialization
+            if (isExplicit && (isa<IntegerLiteral>(Init) || isa<FloatingLiteral>(Init))) {
+                return;
+            }
+
+            // Now perform the checks:
+            
+            // Case 1: Variable has no unit annotation but initializer has units
+            // std::cout << hasAnnotation << " " << initUnit.toString() << std::endl;
+            if (!hasAnnotation && initUnit.toString() != "unitless") {
+                diag(VD->getLocation(),
+                     "Unit safety violation: cannot drop units - assigning value with unit %0 to variable without unit annotation")
+                    << initUnit.toString();
+                return;
+            }
+
+            // Case 2: Variable has unit annotation but units don't match
+            if (hasAnnotation && !(declaredUnit == initUnit)) {
+                diag(VD->getLocation(),
+                     "Unit mismatch: variable declared with unit %0 but initialized with expression of unit %1")
+                    << declaredUnit.toString()
+                    << initUnit.toString();
+                return;
+            }
+
+            // Store the unit information
+            varUnits[VD] = hasAnnotation ? declaredUnit : initUnit;
         }
+    }
 
         if (const auto *ifStmt = Result.Nodes.getNodeAs<IfStmt>("ifStmt")) {
             if (const auto *cond = Result.Nodes.getNodeAs<Expr>("ifCondition")) {
-                inferExpressionUnit(cond); // This will trigger diagnostics for mismatched units
+                inferExpressionUnit(cond, Result); // This will trigger diagnostics for mismatched units
             }
         }
 
@@ -410,7 +508,7 @@ public:
 
                     if (const auto* paramAnnot = param->getAttr<AnnotateAttr>()) {
                         Unit expectedUnit = parseAnnotation(paramAnnot->getAnnotation().str());
-                        Unit argUnit = inferExpressionUnit(arg);
+                        Unit argUnit = inferExpressionUnit(arg, Result);
 
                         if (!(expectedUnit == argUnit)) {
                             diag(arg->getExprLoc(),
@@ -430,7 +528,7 @@ public:
                 storeFunctionParameterUnits(FD);
 
                 if (FD->hasBody()) {
-                    checkFunctionBody(FD->getBody(), FD);
+                    checkFunctionBody(FD->getBody(), FD, Result);
                 }
             }
         }
@@ -438,7 +536,7 @@ public:
         if (const auto* returnStmt = Result.Nodes.getNodeAs<ReturnStmt>("return")) {
             if (const auto* containingFunc = Result.Nodes.getNodeAs<FunctionDecl>("containingFunc")) {
                 if (const Expr* returnValue = returnStmt->getRetValue()) {
-                    Unit returnUnit = inferExpressionUnit(returnValue);
+                    Unit returnUnit = inferExpressionUnit(returnValue, Result);
                     auto it = functionUnits.find(containingFunc);
                     if (it != functionUnits.end() && !(it->second == returnUnit)) {
                         diag(returnValue->getExprLoc(),
