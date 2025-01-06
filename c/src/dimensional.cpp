@@ -283,6 +283,13 @@ public:
         varDecl(hasInitializer(initListExpr().bind("initList"))).bind("var"),
         this);
 
+    Finder->addMatcher(
+        varDecl(hasInitializer(anyOf(
+            initListExpr().bind("initList"),
+            cStyleCastExpr(hasSourceExpression(initListExpr().bind("initList")))))
+        ).bind("var"),
+        this);
+
     // Match function declarations with annotations
     Finder->addMatcher(
         functionDecl(hasAttr(attr::Annotate)).bind("annotatedFunc"), this);
@@ -345,6 +352,11 @@ private:
         }
       }
       return Unit();
+    }
+
+    if (const auto *castExpr = dyn_cast<CStyleCastExpr>(E)) {
+        const Expr *subExpr = castExpr->getSubExpr();
+        return inferExpressionUnit(subExpr, Result); // Recurse into the subexpression
     }
 
     // Handle literal constants in explicit unit context
