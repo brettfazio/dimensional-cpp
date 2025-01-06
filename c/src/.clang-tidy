@@ -1,2 +1,2 @@
-Checks:          '-*,custom-dim-analys-check'
-WarningsAsErrors: 'custom-dim-analys-check'
+Checks:          '-*,dimensional-analysis-check'
+WarningsAsErrors: 'dimensional-analysis-check'

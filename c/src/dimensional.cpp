@@ -456,7 +456,7 @@ public:
 class DimensionalAnalysisModule : public clang::tidy::ClangTidyModule {
 public:
     void addCheckFactories(clang::tidy::ClangTidyCheckFactories &Factories) override {
-        Factories.registerCheck<DimensionalAnalysisCheck>("custom-dim-analys-check");
+        Factories.registerCheck<DimensionalAnalysisCheck>("dimensional-analysis-check");
     }
 };
 
