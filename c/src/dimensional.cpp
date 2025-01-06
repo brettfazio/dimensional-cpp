@@ -15,6 +15,7 @@
 #include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyModule.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
+#include "clang/Frontend/FrontendDiagnostic.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -257,7 +258,6 @@ Unit getUnitFromAnnotations(const Decl* D) {
             foundUnit = true;
         }
     }
-    
     return resultUnit;
 }
 

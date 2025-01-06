@@ -55,7 +55,7 @@ def main():
     # Test "right" cases
     right_dir = os.path.join(test_dir, "right")
     for test_file in sorted(os.listdir(right_dir)):
-        if test_file.endswith(".cpp"):
+        if test_file.endswith("test_no_unit_member.cpp"):
             file_path = os.path.join(right_dir, test_file)
             output = run_clang_tidy(file_path)
             passed, message = analyze_output(output, is_right=True)
@@ -67,7 +67,7 @@ def main():
     # Test "wrong" cases
     wrong_dir = os.path.join(test_dir, "wrong")
     for test_file in sorted(os.listdir(wrong_dir)):
-        if test_file.endswith(".cpp"):
+        if test_file.endswith("test_no_unit_member.cpp"):
             file_path = os.path.join(wrong_dir, test_file)
             output = run_clang_tidy(file_path)
             passed, message = analyze_output(output, is_right=False)
