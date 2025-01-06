@@ -34,6 +34,12 @@ target_link_libraries(${PLUGIN_NAME} clangTidy LLVM clang-cpp clang)
 # Make sure the clean target is run after the build
 set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_BINARY_DIR}/${PLUGIN_SO})
 
+add_custom_target(format
+    COMMAND clang-format -i ${PLUGIN_SRC}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Formatting C++ source files..."
+)
+
 add_custom_target(run_tests
     COMMAND python3 ${CMAKE_SOURCE_DIR}/../../python/run_tests.py
     DEPENDS ${PLUGIN_NAME}
