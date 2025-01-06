@@ -13,5 +13,5 @@ T squared_distance([[clang::annotate("unit:km")]] T dist) {
     return dist * dist;
 }
 
-[[clang::annotate("unit:miles/hour")]] int valid_speed = calculate_speed(as_miles(240), as_hour(4));
-[[clang::annotate("unit:km*km")]] int valid_area = squared_distance(as_km(10));
+[[clang::annotate("unit:miles/hour")]] int valid_speed = calculate_speed(miles50, hours2);
+[[clang::annotate("unit:km*km")]] int valid_area = squared_distance(km25);

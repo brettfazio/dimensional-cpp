@@ -202,8 +202,8 @@ Unit evaluateUnitTree(const UnitNode *node) {
 
 // Parse and evaluate a unit annotation string.
 Unit parseAnnotation(const std::string &annotation) {
-    if (annotation.find("unit:") != 0) {
-        throw std::runtime_error("Invalid unit annotation format");
+    if (annotation.find("unit:") != 0 && annotation.find("explicitunit:") != 0) {
+        throw std::runtime_error("Invalid unit annotation format: " + annotation);
     }
     std::string unitString = annotation.substr(5);
     auto tokens = tokenize(unitString);

@@ -11,6 +11,8 @@
 #define MPH [[clang::annotate("unit:miles/hour")]]
 #define KPH [[clang::annotate("unit:km/hour")]]
 
+#define EXPLICIT [[clang::annotate("explicit")]]
+
 struct Miles {
     M double value;
 };
@@ -20,23 +22,23 @@ struct Hours {
 };
 
 template <typename T>
-M T as_miles(T value) { return value; }
+M EXPLICIT T as_miles(T value) { return value; }
 
 Miles as_miles_t(double value) { return (Miles){value}; }
 
 template <typename T>
-KM T as_km(T value) { return value; }
+KM EXPLICIT T as_km(T value) { return value; }
 
 template <typename T>
-H T as_hours(T value) { return value; }
+H EXPLICIT T as_hours(T value) { return value; }
 
 Hours as_hours_t(double value) { return (Hours){value}; }
 
 template <typename T>
-MIN T as_minutes(T value) { return value; }
+MIN EXPLICIT T as_minutes(T value) { return value; }
 
 template <typename T>
-SEC T as_seconds(T value) { return value; }
+SEC EXPLICIT T as_seconds(T value) { return value; }
 
 template <typename T>
 MPH T to_mph(M T distance, H T time) { return distance / time; }

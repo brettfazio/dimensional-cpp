@@ -1,3 +1,7 @@
 #include "../helper.hh"
 
-[[clang::annotate("unit:km")]] int X_KM_VIA_FUNC_WRONG = as_miles(1);    // INVALID
+M int get_miles(M int miles) {
+    return miles;
+}
+
+[[clang::annotate("unit:km")]] int X_KM_VIA_FUNC_WRONG = get_miles(miles50);    // INVALID
