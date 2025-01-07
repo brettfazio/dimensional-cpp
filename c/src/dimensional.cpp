@@ -283,13 +283,6 @@ public:
         varDecl(hasInitializer(initListExpr().bind("initList"))).bind("var"),
         this);
 
-    Finder->addMatcher(
-        varDecl(hasInitializer(anyOf(
-            initListExpr().bind("initList"),
-            cStyleCastExpr(hasSourceExpression(initListExpr().bind("initList")))))
-        ).bind("var"),
-        this);
-
     // Match function declarations with annotations
     Finder->addMatcher(
         functionDecl(hasAttr(attr::Annotate)).bind("annotatedFunc"), this);
