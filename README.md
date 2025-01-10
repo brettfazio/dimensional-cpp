@@ -1,5 +1,7 @@
 # dimensional-cpp
 
+Clang tidy plugin that provides dimensional analysis for C++. Annotate a variable with a unit like `[[clang::annotate("unit:miles")]]` and the plugin will validate the units during operations.
+
 ## make
 
 ```bash
