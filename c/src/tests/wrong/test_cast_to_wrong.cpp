@@ -6,4 +6,6 @@ M EXPLICIT int miles100 = 100;
 
 M2H int complex_rate = (miles100 * miles50) / hours2;
 
-int drop_unit = static_cast<short>(complex_rate);
+#define WRONG [[clang::annotate("minutes")]]
+
+WRONG int drop_unit = static_cast<short>(complex_rate);

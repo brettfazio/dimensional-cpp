@@ -313,6 +313,26 @@ private:
 
     E = E->IgnoreParenImpCasts();
 
+    // Add handling for static_cast
+    if (const auto *castExpr = dyn_cast<CXXStaticCastExpr>(E)) {
+        const Expr *subExpr = castExpr->getSubExpr();
+        Unit sourceUnit = inferExpressionUnit(subExpr, Result);
+        
+        // If we're casting from a unit type to a non-unit type, flag it
+        if (sourceUnit.toString() != "unitless") {
+            const auto *destType = castExpr->getType().getTypePtrOrNull();
+            const auto *parent = Result.Nodes.getNodeAs<VarDecl>("var");
+            
+            if (parent && !parent->hasAttr<AnnotateAttr>()) {
+                diag(castExpr->getOperatorLoc(),
+                     "Unit safety violation: cannot drop units through static_cast - "
+                     "casting value with unit %0 to non-unit type")
+                    << sourceUnit.toString();
+            }
+        }
+        return sourceUnit;
+    }
+
     if (const auto *initList = dyn_cast<InitListExpr>(E)) {
       const auto *varDecl =
           dyn_cast_or_null<VarDecl>(Result.Nodes.getNodeAs<VarDecl>("var"));
@@ -349,7 +369,23 @@ private:
 
     if (const auto *castExpr = dyn_cast<CStyleCastExpr>(E)) {
         const Expr *subExpr = castExpr->getSubExpr();
-        return inferExpressionUnit(subExpr, Result); // Recurse into the subexpression
+        Unit sourceUnit = inferExpressionUnit(subExpr, Result);
+        
+        // Get parent variable if this is an initialization
+        const auto &parents = Result.Context->getParents(*castExpr);
+        if (!parents.empty()) {
+            if (const auto *varDecl = parents[0].get<VarDecl>()) {
+                Unit targetUnit = getUnitFromAnnotations(varDecl);
+                if (targetUnit.toString() != "unitless" && 
+                    targetUnit.toString() != sourceUnit.toString()) {
+                    diag(castExpr->getExprLoc(),
+                         "Unit mismatch in cast: expression has unit %0 but target "
+                         "variable expects unit %1")
+                        << sourceUnit.toString() << targetUnit.toString();
+                }
+            }
+        }
+        return sourceUnit;
     }
 
     // Handle literal constants in explicit unit context
@@ -576,7 +612,7 @@ public:
       }
     }
 
-    if (const auto *DI = Result.Nodes.getNodeAs<InitListExpr>("initList")) {
+    if (const auto *DI = Result.Nodes.getNodeAs<CStyleCastExpr>("initList")) {
     }
 
     if (const auto *FD =
